@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>pichchamala — root@shell</title>
+<style>
+  @import url('https://cdnjs.cloudflare.com/ajax/libs/jetbrains-mono/2.304/JetBrainsMono-Regular.woff2') ;
+  * { margin:0; padding:0; box-sizing:border-box; }
+
+  :root{
+    --bg:#050607;
+    --panel:#0b0f0d;
+    --line:#1b241f;
+    --green:#39ff88;
+    --green-dim:#1f7a45;
+    --green-bright:#8dffc0;
+    --muted:#5a6b63;
+    --text:#c9d6cf;
+    --red:#ff3860;
+  }
+
+  html,body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size:15px;
+    line-height:1.65;
+    -webkit-font-smoothing:antialiased;
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    * { animation:none !important; transition:none !important; }
+    #boot{ display:none !important; }
+    body{ opacity:1 !important; }
+  }
+
+  #matrix{
+    position:fixed; inset:0; z-index:0;
+    opacity:.16;
+  }
+
+  .scanlines{
+    position:fixed; inset:0; pointer-events:none; z-index:50;
+    background:repeating-linear-gradient(
+      to bottom,
+      rgba(0,0,0,0) 0px,
+      rgba(0,0,0,0) 1px,
+      rgba(0,0,0,0.12) 2px
+    );
+    mix-blend-mode:overlay;
+    opacity:.5;
+  }
+
+  .vignette{
+    position:fixed; inset:0; z-index:49; pointer-events:none;
+    background:radial-gradient(ellipse at center, rgba(0,0,0,0) 55%, rgba(0,0,0,.65) 100%);
+  }
+
+  body{
+    opacity:0;
+  }
+  body.ready{
+    opacity:1;
+    animation:crt-in .5s ease-out;
+  }
+  @keyframes crt-in{
+    0%{ opacity:0; filter:brightness(3) saturate(0); transform:scaleY(1.05); }
+    30%{ opacity:1; filter:brightness(1.8) saturate(1.2); }
+    100%{ opacity:1; filter:brightness(1) saturate(1); transform:scaleY(1); }
+  }
+
+  #boot{
+    position:fixed; inset:0; z-index:100;
+    background:#000;
+    color:var(--green);
+    font-family:'JetBrains Mono', monospace;
+    font-size:13px;
+    padding:30px;
+    white-space:pre-wrap;
+    overflow:hidden;
+  }
+  #boot.hide{
+    animation:boot-out .35s ease-in forwards;
+  }
+  @keyframes boot-out{
+    0%{ opacity:1; }
+    100%{ opacity:0; visibility:hidden; }
+  }
+  #boot-log{ display:block; }
+  #boot .bline{ opacity:0; animation:appear .05s forwards; }
+  @keyframes appear{ to{ opacity:1; } }
+
+  .glitch{
+    position:relative;
+    display:inline-block;
+  }
+  .glitch.active::before,
+  .glitch.active::after{
+    content:attr(data-text);
+    position:absolute; left:0; top:0;
+    width:100%; overflow:hidden;
+    background:var(--panel);
+  }
+  .glitch.active::before{
+    color:var(--red);
+    animation:glitch-1 .28s steps(2,end) 2;
+    clip-path:inset(0 0 60% 0);
+  }
+  .glitch.active::after{
+    color:#7fd7ff;
+    animation:glitch-2 .28s steps(2,end) 2;
+    clip-path:inset(60% 0 0 0);
+  }
+  @keyframes glitch-1{
+    0%{ transform:translate(0,0); }
+    50%{ transform:translate(-3px,-1px); }
+    100%{ transform:translate(0,0); }
+  }
+  @keyframes glitch-2{
+    0%{ transform:translate(0,0); }
+    50%{ transform:translate(3px,1px); }
+    100%{ transform:translate(0,0); }
+  }
+
+  .wrap{
+    position:relative;
+    z-index:1;
+    max-width:760px;
+    margin:0 auto;
+    padding:40px 20px 120px;
+  }
+
+  .terminal{
+    border:1px solid var(--line);
+    border-radius:6px;
+    background:rgba(11,15,13,.88);
+    backdrop-filter:blur(3px);
+    box-shadow:0 0 0 1px rgba(0,0,0,.4), 0 30px 80px -30px rgba(0,0,0,.8);
+    overflow:hidden;
+  }
+
+  .titlebar{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    padding:10px 14px;
+    background:#0e1512;
+    border-bottom:1px solid var(--line);
+  }
+  .dot{ width:10px; height:10px; border-radius:50%; background:#2a332e; }
+  .titlebar .name{
+    margin-left:8px;
+    color:var(--muted);
+    font-size:12px;
+    letter-spacing:.02em;
+  }
+
+  .body{
+    padding:28px 26px 40px;
+  }
+
+  .prompt{
+    color:var(--green-dim);
+  }
+  .prompt .user{ color:var(--green); }
+  .prompt .path{ color:var(--muted); }
+
+  .cmdline{
+    color:var(--green-bright);
+    font-weight:600;
+  }
+
+  .block{
+    margin-bottom:34px;
+  }
+
+  .out{
+    margin-top:10px;
+    padding-left:2px;
+    color:var(--text);
+  }
+
+  .out p { margin-bottom:12px; max-width:66ch; }
+  .out p:last-child{ margin-bottom:0; }
+
+  a{ color:var(--green); text-decoration:none; border-bottom:1px solid var(--green-dim); }
+  a:hover{ border-bottom-color:var(--green); }
+
+  .ascii{
+    color:var(--green);
+    font-size:11px;
+    line-height:1.15;
+    white-space:pre;
+    margin-bottom:18px;
+    overflow-x:auto;
+  }
+
+  .field{
+    display:grid;
+    grid-template-columns:120px 1fr;
+    gap:4px 16px;
+    margin-top:6px;
+  }
+  .field dt{ color:var(--muted); }
+  .field dd{ color:var(--text); }
+
+  .skillrow{
+    display:flex;
+    justify-content:space-between;
+    gap:20px;
+    padding:6px 0;
+    border-bottom:1px dashed var(--line);
+    font-size:14px;
+  }
+  .skillrow:last-child{ border-bottom:none; }
+  .skillrow .bar{
+    color:var(--green-dim);
+    letter-spacing:1px;
+    font-size:13px;
+  }
+  .skillrow .bar .fill{ color:var(--green); }
+
+  .lsline{
+    display:grid;
+    grid-template-columns:auto auto 1fr;
+    gap:0 14px;
+    padding:7px 0;
+    border-bottom:1px solid var(--line);
+    align-items:baseline;
+  }
+  .lsline:last-child{ border-bottom:none; }
+  .lsline .perm{ color:var(--muted); font-size:12px; }
+  .lsline .fname{ color:var(--green-bright); }
+  .lsline .desc{ color:var(--muted); font-size:13px; grid-column:1/-1; margin-top:2px; }
+
+  .contact-line{
+    display:flex;
+    gap:10px;
+    align-items:baseline;
+  }
+  .contact-line .k{ color:var(--muted); width:90px; display:inline-block; }
+
+  .cursor{
+    display:inline-block;
+    width:8px; height:1em;
+    background:var(--green);
+    vertical-align:text-bottom;
+    animation:blink 1s steps(1) infinite;
+  }
+  @keyframes blink{ 50%{ opacity:0; } }
+
+  .typed-out{ display:inline; }
+
+  footer{
+    margin-top:28px;
+    color:var(--muted);
+    font-size:12px;
+    text-align:center;
+  }
+
+  ::selection{ background:var(--green-dim); color:#000; }
+
+  @media (max-width:600px){
+    .field{ grid-template-columns:100px 1fr; }
+    body{ font-size:14px; }
+  }
+</style>
+</head>
+<body>
+
+<div id="boot">
+  <span id="boot-log"></span>
+</div>
+
+<canvas id="matrix"></canvas>
+<div class="scanlines"></div>
+<div class="vignette"></div>
+
+<div class="wrap">
+  <div class="terminal">
+    <div class="titlebar">
+      <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+      <span class="name">pichchamala@root — 80x24</span>
+    </div>
+
+    <div class="body">
+
+      <!-- intro / typed banner -->
+      <div class="block">
+        <pre class="ascii glitch" id="banner" data-text="██████╗ ██╗ ██████╗██╗  ██╗ ██████╗██╗  ██╗ █████╗ ███╗   ███╗ █████╗ ██╗      █████╗&#10;██╔══██╗██║██╔════╝██║  ██║██╔════╝██║  ██║██╔══██╗████╗ ████║██╔══██╗██║     ██╔══██╗&#10;██████╔╝██║██║     ███████║██║     ███████║███████║██╔████╔██║███████║██║     ███████║&#10;██╔═══╝ ██║██║     ██╔══██║██║     ██╔══██║██╔══██║██║╚██╔╝██║██╔══██║██║     ██╔══██║&#10;██║     ██║╚██████╗██║  ██║╚██████╗██║  ██║██║  ██║██║ ╚═╝ ██║██║  ██║███████╗██║  ██║&#10;╚═╝     ╚═╝ ╚═════╝╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝     ╚═╝╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝">██████╗ ██╗ ██████╗██╗  ██╗ ██████╗██╗  ██╗ █████╗ ███╗   ███╗ █████╗ ██╗      █████╗
+██╔══██╗██║██╔════╝██║  ██║██╔════╝██║  ██║██╔══██╗████╗ ████║██╔══██╗██║     ██╔══██╗
+██████╔╝██║██║     ███████║██║     ███████║███████║██╔████╔██║███████║██║     ███████║
+██╔═══╝ ██║██║     ██╔══██║██║     ██╔══██║██╔══██║██║╚██╔╝██║██╔══██║██║     ██╔══██║
+██║     ██║╚██████╗██║  ██║╚██████╗██║  ██║██║  ██║██║ ╚═╝ ██║██║  ██║███████╗██║  ██║
+╚═╝     ╚═╝ ╚═════╝╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝     ╚═╝╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝</pre>
+        <p class="prompt"><span class="user">pichchamala</span>@<span class="path">shell</span>:~$ <span class="typed-out" id="typed"></span><span class="cursor" id="cursor"></span></p>
+      </div>
+
+      <!-- whoami -->
+      <div class="block">
+        <p class="prompt"><span class="user">pichchamala</span>@<span class="path">shell</span>:~$ <span class="cmdline">whoami</span></p>
+        <div class="out">
+          <p>Offensive security researcher and exploit tinkerer. I break things to understand how they hold together, then write up what I found so the next person doesn't have to start from zero.</p>
+          <div class="field">
+            <dt>alias</dt><dd>pichchamala</dd>
+            <dt>focus</dt><dd>web exploitation, reverse engineering, red team tooling</dd>
+            <dt>status</dt><dd>available for freelance engagements and CTF collabs</dd>
+            <dt>uptime</dt><dd>online since 2021</dd>
+          </div>
+        </div>
+      </div>
+
+      <!-- cat skills.txt -->
+      <div class="block">
+        <p class="prompt"><span class="user">pichchamala</span>@<span class="path">shell</span>:~$ <span class="cmdline">cat skills.txt</span></p>
+        <div class="out">
+          <div class="skillrow"><span>Web Exploitation</span><span class="bar"><span class="fill">██████████</span>░░ 90%</span></div>
+          <div class="skillrow"><span>Binary Exploitation</span><span class="bar"><span class="fill">████████</span>░░░░ 75%</span></div>
+          <div class="skillrow"><span>Reverse Engineering</span><span class="bar"><span class="fill">█████████</span>░░░ 82%</span></div>
+          <div class="skillrow"><span>Network Pentesting</span><span class="bar"><span class="fill">█████████</span>░░░ 85%</span></div>
+          <div class="skillrow"><span>Scripting (Python / Bash)</span><span class="bar"><span class="fill">██████████</span>░ 95%</span></div>
+          <div class="skillrow"><span>Social Engineering</span><span class="bar"><span class="fill">███████</span>░░░░░ 65%</span></div>
+        </div>
+      </div>
+
+      <!-- ls projects -->
+      <div class="block">
+        <p class="prompt"><span class="user">pichchamala</span>@<span class="path">shell</span>:~$ <span class="cmdline">ls -la projects/</span></p>
+        <div class="out">
+          <div class="lsline">
+            <span class="perm">-rwxr-xr-x</span><span class="fname">shadowproxy.py</span>
+            <span></span>
+            <span class="desc">Traffic obfuscation proxy for red-team C2 channels — evades common DPI signatures.</span>
+          </div>
+          <div class="lsline">
+            <span class="perm">-rwxr-xr-x</span><span class="fname">ctf-writeups/</span>
+            <span></span>
+            <span class="desc">40+ published writeups across pwn, web, and crypto categories from HTB and picoCTF.</span>
+          </div>
+          <div class="lsline">
+            <span class="perm">-rwxr-xr-x</span><span class="fname">phantom-scanner</span>
+            <span></span>
+            <span class="desc">Low-noise async port and service scanner built to stay under IDS thresholds.</span>
+          </div>
+          <div class="lsline">
+            <span class="perm">-rw-r--r--</span><span class="fname">zeroday-notes.md</span>
+            <span></span>
+            <span class="desc">Private research log on memory corruption bugs in embedded IoT firmware.</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- contact -->
+      <div class="block">
+        <p class="prompt"><span class="user">pichchamala</span>@<span class="path">shell</span>:~$ <span class="cmdline">cat contact.cfg</span></p>
+        <div class="out">
+          <div class="contact-line"><span class="k">github</span><a href="#">github.com/pichchamala</a></div>
+          <div class="contact-line"><span class="k">signal</span><span>available on request</span></div>
+          <div class="contact-line"><span class="k">pgp_key</span><a href="#">0xF3C1...9A2E</a></div>
+          <div class="contact-line"><span class="k">mail</span><a href="#">root@pichchamala.dev</a></div>
+        </div>
+      </div>
+
+      <p class="prompt"><span class="user">pichchamala</span>@<span class="path">shell</span>:~$ <span class="cursor"></span></p>
+
+    </div>
+  </div>
+  <footer>connection encrypted · session logged nowhere</footer>
+</div>
+
+<script>
+(function(){
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // ---- typing helper ----
+  function typeText(){
+    const text = "access granted.";
+    const el = document.getElementById('typed');
+    let i = 0;
+    (function step(){
+      if(i < text.length){
+        el.textContent += text.charAt(i);
+        i++;
+        setTimeout(step, 55);
+      }
+    })();
+  }
+
+  function glitchBanner(){
+    const b = document.getElementById('banner');
+    b.classList.add('active');
+    setTimeout(()=> b.classList.remove('active'), 700);
+    setTimeout(()=> { b.classList.add('active'); setTimeout(()=>b.classList.remove('active'),300); }, 2600);
+  }
+
+  // ---- matrix rain ----
+  function startMatrix(){
+    const canvas = document.getElementById('matrix');
+    const ctx = canvas.getContext('2d');
+    let w, h, cols, drops;
+    const glyphs = "アイウエオカキクケコサシスセソ01234567890{}<>/\\;:$#%&*ABCDEFGHIJKLM";
+
+    function size(){
+      w = canvas.width = window.innerWidth;
+      h = canvas.height = window.innerHeight;
+      cols = Math.floor(w / 16);
+      drops = new Array(cols).fill(0).map(()=> Math.random() * -50);
+    }
+    size();
+    window.addEventListener('resize', size);
+
+    function draw(){
+      ctx.fillStyle = 'rgba(5,6,7,0.08)';
+      ctx.fillRect(0,0,w,h);
+      ctx.font = '14px monospace';
+      for(let i=0;i<cols;i++){
+        const char = glyphs[Math.floor(Math.random()*glyphs.length)];
+        const x = i*16;
+        const y = drops[i]*18;
+        ctx.fillStyle = Math.random() > 0.96 ? '#8dffc0' : '#1f7a45';
+        ctx.fillText(char, x, y);
+        if(y > h && Math.random() > 0.975){ drops[i] = 0; }
+        drops[i]++;
+      }
+    }
+
+    if(!reduced){
+      setInterval(draw, 60);
+    } else {
+      // static faint pass, no loop
+      draw();
+    }
+  }
+
+  // ---- boot sequence ----
+  const bootLines = [
+    "initializing secure shell ...",
+    "loading kernel modules [ok]",
+    "mounting /dev/pich0 ...........[ok]",
+    "checking encrypted volumes ....[ok]",
+    "spoofing MAC address ..........[ok]",
+    "establishing tor circuit ......[ok]",
+    "clearing access logs ..........[ok]",
+    "",
+    "welcome back, pichchamala."
+  ];
+
+  function runBoot(){
+    const logEl = document.getElementById('boot-log');
+    const bootEl = document.getElementById('boot');
+
+    if(reduced){
+      bootEl.style.display = 'none';
+      document.body.classList.add('ready');
+      startMatrix();
+      typeText();
+      return;
+    }
+
+    let li = 0;
+    function nextLine(){
+      if(li < bootLines.length){
+        const span = document.createElement('span');
+        span.className = 'bline';
+        span.textContent = bootLines[li] + "\n";
+        logEl.appendChild(span);
+        li++;
+        setTimeout(nextLine, bootLines[li-1] === "" ? 120 : 140 + Math.random()*90);
+      } else {
+        setTimeout(()=>{
+          bootEl.classList.add('hide');
+          document.body.classList.add('ready');
+          startMatrix();
+          setTimeout(()=>{
+            typeText();
+            glitchBanner();
+          }, 300);
+        }, 400);
+      }
+    }
+    nextLine();
+  }
+
+  document.addEventListener('DOMContentLoaded', runBoot);
+})();
+</script>
+
+</body>
+</html>
